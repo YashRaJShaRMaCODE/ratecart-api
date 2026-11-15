@@ -39,3 +39,22 @@ jobs:
         run: go test -race ./...
       - name: Build
         run: go build ./cmd/server
+
+  container:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ratecart-ci-only
+      RATECART_API_KEYS: '[{"tenant_id":"ci","key":"0123456789abcdef0123456789abcdef"}]'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and start PostgreSQL-backed container
+        run: docker compose up --build --wait --wait-timeout 120 -d
+      - name: Check readiness and authenticated catalog route
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8080/health
+          curl --fail --silent --show-error \
+            -H 'Authorization: Bearer 0123456789abcdef0123456789abcdef' \
+            http://127.0.0.1:8080/products
+      - name: Remove test containers and database
+        if: always()
+        run: docker compose down --volumes
