@@ -7,6 +7,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/server
 
 FROM alpine:latest
 WORKDIR /
-COPY --from=builder /server /server
+RUN apk add --no-cache ca-certificates && addgroup -S app && adduser -S -G app app
+COPY --from=builder --chown=app:app /server /server
+USER app
 EXPOSE 8080
 ENTRYPOINT ["/server"]

@@ -16,6 +16,20 @@ go run ./cmd/server
 
 For persistent catalog data and a shared rate limit across server instances, set `DATABASE_URL` to a PostgreSQL connection string before starting. The service creates its tables and indexes on startup. Without it, local development uses memory and product/quota data disappears on restart. Set `APP_ENV=production` to make startup fail when `DATABASE_URL` is missing. Keep the connection string in the host's secret settings, never in source control.
 
+## Run a persistent local stack
+
+Docker Compose starts the API with PostgreSQL, waits for the database health check, and keeps database files in a named volume. The API port is bound to this computer only; this stack is for local evaluation, not a public production host.
+
+```powershell
+$env:POSTGRES_PASSWORD = python -c "import secrets; print(secrets.token_urlsafe(24))"
+$key = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$env:RATECART_API_KEYS = '[{"tenant_id":"demo","key":"' + $key + '"}]'
+docker compose up --build -d
+Invoke-RestMethod http://localhost:8080/health
+```
+
+Use `docker compose logs -f api` to inspect startup and `docker compose down` to stop the stack. The named volume keeps local data when containers stop; `docker compose down -v` permanently deletes that local database. Do not use this development stack for customer data without tested backups/restores, managed API-key rotation, HTTPS, abuse monitoring, and privacy review.
+
 ## API
 
 `GET /health` and `GET /openapi.json` are public. Health returns `503` if the configured datastore is unavailable, and `200` when ready. Every other route requires `Authorization: Bearer <api-key>`.
