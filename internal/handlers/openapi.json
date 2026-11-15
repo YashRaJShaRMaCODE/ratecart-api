@@ -1,0 +1,149 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "RateCart Catalog API",
+    "version": "1.0.0",
+    "description": "Tenant-scoped product catalog and request-quota API. Protected routes require a configured bearer API key."
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Check catalog storage readiness",
+        "security": [],
+        "responses": {
+          "200": { "description": "Catalog storage is ready.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" }
+        }
+      }
+    },
+    "/request": {
+      "post": {
+        "summary": "Consume one request from the tenant quota",
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/QuotaRequest" } } } },
+        "responses": {
+          "201": { "description": "Request accepted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/stats": {
+      "get": {
+        "summary": "Read the authenticated tenant's quota stats",
+        "responses": {
+          "200": { "description": "Tenant quota counters.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Stats" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/products": {
+      "get": {
+        "summary": "List this tenant's product summaries",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "responses": {
+          "200": { "description": "A page of product summaries.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductList" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "post": {
+        "summary": "Create a product for this tenant",
+        "requestBody": { "$ref": "#/components/requestBodies/ProductWrite" },
+        "responses": {
+          "201": { "description": "Created product.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/products/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/ProductId" }],
+      "get": {
+        "summary": "Get a product owned by this tenant",
+        "responses": {
+          "200": { "description": "Product details.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "put": {
+        "summary": "Replace a product's name and SKU",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductUpdate" } } } },
+        "responses": {
+          "200": { "description": "Product updated.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/products/{id}/media": {
+      "parameters": [{ "$ref": "#/components/parameters/ProductId" }],
+      "post": {
+        "summary": "Append up to 20 image URLs and 20 video URLs",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddMedia" } } } },
+        "responses": {
+          "200": { "description": "Media added.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Status" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/TooLarge" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "API key" } },
+    "parameters": {
+      "ProductId": { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+    },
+    "requestBodies": {
+      "ProductWrite": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductWrite" } } } }
+    },
+    "responses": {
+      "BadRequest": { "description": "Invalid request body or query parameter.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unauthorized": { "description": "Missing or invalid bearer API key.", "headers": { "WWW-Authenticate": { "schema": { "type": "string", "example": "Bearer" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Product does not exist in this tenant.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Conflict": { "description": "SKU is already used by this tenant.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "TooLarge": { "description": "Request body exceeds 1 MiB.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "RateLimited": { "description": "Tenant exceeded five requests in a rolling minute.", "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 1, "maximum": 60 } }, "X-RateLimit-Limit": { "schema": { "type": "integer", "example": 5 } }, "X-RateLimit-Remaining": { "schema": { "type": "integer", "example": 0 } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "ServerError": { "description": "Internal storage or service error.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "ServiceUnavailable": { "description": "Configured catalog storage is unavailable.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Health" } } } }
+    },
+    "schemas": {
+      "Health": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string", "enum": ["ok", "unavailable"] } } },
+      "Status": { "type": "object", "required": ["status"], "properties": { "status": { "type": "string" } } },
+      "Error": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } } },
+      "QuotaRequest": { "type": "object", "properties": { "payload": { "type": "object", "additionalProperties": true } }, "additionalProperties": false },
+      "ProductWrite": { "type": "object", "required": ["name", "sku"], "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 120 }, "sku": { "type": "string", "minLength": 1, "maxLength": 64 }, "image_urls": { "type": "array", "maxItems": 20, "items": { "type": "string", "format": "uri" } }, "video_urls": { "type": "array", "maxItems": 20, "items": { "type": "string", "format": "uri" } } }, "additionalProperties": false },
+      "ProductUpdate": { "type": "object", "required": ["name", "sku"], "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 120 }, "sku": { "type": "string", "minLength": 1, "maxLength": 64 } }, "additionalProperties": false },
+      "AddMedia": { "type": "object", "properties": { "image_urls": { "type": "array", "maxItems": 20, "items": { "type": "string", "format": "uri" } }, "video_urls": { "type": "array", "maxItems": 20, "items": { "type": "string", "format": "uri" } } }, "anyOf": [{ "required": ["image_urls"], "properties": { "image_urls": { "minItems": 1 } } }, { "required": ["video_urls"], "properties": { "video_urls": { "minItems": 1 } } }], "additionalProperties": false },
+      "Product": { "type": "object", "required": ["id", "name", "sku", "image_urls", "video_urls", "created_at"], "properties": { "id": { "type": "string", "format": "uuid" }, "name": { "type": "string" }, "sku": { "type": "string" }, "image_urls": { "type": "array", "items": { "type": "string", "format": "uri" } }, "video_urls": { "type": "array", "items": { "type": "string", "format": "uri" } }, "created_at": { "type": "string", "format": "date-time" } } },
+      "ProductSummary": { "type": "object", "required": ["id", "name", "sku", "image_count", "video_count", "thumbnail_url"], "properties": { "id": { "type": "string", "format": "uuid" }, "name": { "type": "string" }, "sku": { "type": "string" }, "image_count": { "type": "integer", "minimum": 0 }, "video_count": { "type": "integer", "minimum": 0 }, "thumbnail_url": { "type": "string" } } },
+      "ProductList": { "type": "object", "required": ["items", "limit", "offset", "total"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/ProductSummary" } }, "limit": { "type": "integer" }, "offset": { "type": "integer" }, "total": { "type": "integer" } } },
+      "Stats": { "type": "object", "required": ["accepted_current_window", "rejected_cumulative"], "properties": { "accepted_current_window": { "type": "integer", "minimum": 0 }, "rejected_cumulative": { "type": "integer", "minimum": 0 } } }
+    }
+  }
+}

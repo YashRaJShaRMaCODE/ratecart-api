@@ -10,6 +10,19 @@ permissions:
 jobs:
   go:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ratecart_test
+          POSTGRES_DB: ratecart_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ratecart_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -21,6 +34,8 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Test
+        env:
+          RATECART_TEST_DATABASE_URL: postgres://postgres:ratecart_test@localhost:5432/ratecart_test?sslmode=disable
         run: go test -race ./...
       - name: Build
         run: go build ./cmd/server

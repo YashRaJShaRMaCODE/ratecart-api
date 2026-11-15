@@ -1,28 +1,42 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
-	"github.com/YashRaJShaRMaCODE/sourceasia-backend-assignment/internal/models"
-	"github.com/YashRaJShaRMaCODE/sourceasia-backend-assignment/internal/store"
+	"github.com/YashRaJShaRMaCODE/ratecart-api/internal/models"
+	"github.com/YashRaJShaRMaCODE/ratecart-api/internal/store"
 	"github.com/google/uuid"
 )
 
+var ErrProductNotFound = errors.New("not found")
+var ErrInvalidMedia = errors.New("invalid media")
+var ErrCatalogUnavailable = errors.New("catalog storage unavailable")
+
 type ProductService struct {
-	store *store.InMemoryStore
+	store store.Catalog
 }
 
-func NewProductService(s *store.InMemoryStore) *ProductService {
+func NewProductService(s store.Catalog) *ProductService {
 	return &ProductService{store: s}
 }
 
-func (s *ProductService) CreateProduct(p *models.Product) (*models.Product, error) {
+func (s *ProductService) Ping(ctx context.Context) error { return s.store.Ping(ctx) }
+
+func (s *ProductService) CreateProduct(ctx context.Context, tenantID string, p *models.Product) (*models.Product, error) {
 	p.Name = strings.TrimSpace(p.Name)
 	p.SKU = strings.TrimSpace(p.SKU)
+	p.TenantID = tenantID
+	if p.ImageURLs == nil {
+		p.ImageURLs = []string{}
+	}
+	if p.VideoURLs == nil {
+		p.VideoURLs = []string{}
+	}
 	if p.Name == "" || p.SKU == "" {
 		return nil, errors.New("name and sku are required")
 	}
@@ -41,23 +55,50 @@ func (s *ProductService) CreateProduct(p *models.Product) (*models.Product, erro
 	p.ID = id.String()
 	p.CreatedAt = time.Now()
 
-	if !s.store.AddProduct(p) {
-		return nil, fmt.Errorf("conflict: sku %s already exists", p.SKU)
+	if err := s.store.CreateProduct(ctx, p); err != nil {
+		if errors.Is(err, store.ErrDuplicateSKU) {
+			return nil, fmt.Errorf("conflict: sku %s already exists", p.SKU)
+		}
+		return nil, fmt.Errorf("%w: %v", ErrCatalogUnavailable, err)
 	}
 	return p, nil
 }
 
-func (s *ProductService) AddMedia(id string, req models.AddMediaRequest) error {
+func (s *ProductService) AddMedia(ctx context.Context, tenantID, id string, req models.AddMediaRequest) error {
 	if len(req.ImageURLs) == 0 && len(req.VideoURLs) == 0 {
-		return errors.New("at least one media array required")
+		return fmt.Errorf("%w: at least one media array required", ErrInvalidMedia)
 	}
 
 	if err := validateMedia(req.ImageURLs, req.VideoURLs); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrInvalidMedia, err)
 	}
 
-	if ok := s.store.UpdateProductMedia(id, req.ImageURLs, req.VideoURLs); !ok {
-		return errors.New("not found")
+	if ok, err := s.store.AddProductMedia(ctx, tenantID, id, req.ImageURLs, req.VideoURLs); err != nil {
+		return fmt.Errorf("%w: %v", ErrCatalogUnavailable, err)
+	} else if !ok {
+		return ErrProductNotFound
+	}
+	return nil
+}
+
+func (s *ProductService) UpdateProduct(ctx context.Context, tenantID, id string, req models.UpdateProductRequest) error {
+	name := strings.TrimSpace(req.Name)
+	sku := strings.TrimSpace(req.SKU)
+	if name == "" || sku == "" {
+		return errors.New("name and sku are required")
+	}
+	if len(name) > 120 || len(sku) > 64 {
+		return errors.New("name must be at most 120 characters and sku at most 64")
+	}
+	updated, err := s.store.UpdateProduct(ctx, tenantID, id, name, sku)
+	if err != nil {
+		if errors.Is(err, store.ErrDuplicateSKU) {
+			return fmt.Errorf("conflict: sku %s already exists", sku)
+		}
+		return fmt.Errorf("%w: %v", ErrCatalogUnavailable, err)
+	}
+	if !updated {
+		return ErrProductNotFound
 	}
 	return nil
 }
@@ -81,25 +122,26 @@ func validateMedia(imgs, vids []string) error {
 }
 
 type RateLimitService struct {
-	store *store.InMemoryStore
+	store store.RateLimiter
 }
 
-func NewRateLimitService(s *store.InMemoryStore) *RateLimitService {
+func NewRateLimitService(s store.RateLimiter) *RateLimitService {
 	return &RateLimitService{store: s}
 }
 
-func (s *RateLimitService) ProcessRequest(userID string) bool {
-	return s.store.AllowRequest(userID)
+func (s *RateLimitService) ProcessRequest(ctx context.Context, tenantID string) (bool, time.Duration, error) {
+	return s.store.ProcessRequest(ctx, tenantID)
 }
 
-func (s *RateLimitService) GetStats() models.StatsResponse {
-	return models.StatsResponse{Users: s.store.GetStats()}
+func (s *RateLimitService) GetStats(ctx context.Context, tenantID string) (models.StatsResponse, error) {
+	stats, err := s.store.ReadStats(ctx, tenantID)
+	return models.StatsResponse{UserStats: stats}, err
 }
 
-func (s *ProductService) ListProducts(limit, offset int) ([]models.ProductSummary, int) {
-	return s.store.ListProducts(limit, offset)
+func (s *ProductService) ListProducts(ctx context.Context, tenantID string, limit, offset int) ([]models.ProductSummary, int, error) {
+	return s.store.ListProducts(ctx, tenantID, limit, offset)
 }
 
-func (s *ProductService) GetByID(id string) (*models.Product, bool) {
-	return s.store.GetProductByID(id)
+func (s *ProductService) GetByID(ctx context.Context, tenantID, id string) (*models.Product, bool, error) {
+	return s.store.GetProductByID(ctx, tenantID, id)
 }

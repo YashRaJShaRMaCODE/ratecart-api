@@ -10,15 +10,15 @@ type UserStats struct {
 }
 
 type StatsResponse struct {
-	Users map[string]UserStats `json:"users"`
+	UserStats
 }
 
 type RateLimitRequest struct {
-	UserID  string                 `json:"user_id"`
 	Payload map[string]interface{} `json:"payload"`
 }
 
 type Product struct {
+	TenantID  string    `json:"-"`
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	SKU       string    `json:"sku"`
@@ -46,4 +46,9 @@ type ProductListResponse struct {
 type AddMediaRequest struct {
 	ImageURLs []string `json:"image_urls"`
 	VideoURLs []string `json:"video_urls"`
+}
+
+type UpdateProductRequest struct {
+	Name string `json:"name"`
+	SKU  string `json:"sku"`
 }

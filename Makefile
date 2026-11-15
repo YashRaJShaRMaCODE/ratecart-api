@@ -11,7 +11,7 @@ build:
 	go build -o bin/server ./cmd/server
 
 docker-build:
-	docker build -t sourceasia-backend .
+	docker build -t ratecart-api .
 
 docker-run:
-	docker run -p 8080:8080 sourceasia-backend
+	docker run --rm -p 8080:8080 -e RATECART_API_KEYS ratecart-api

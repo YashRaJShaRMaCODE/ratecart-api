@@ -1,15 +1,23 @@
 package middleware
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
 )
 
-func Logging(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func Logging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next(w, r)
+		next.ServeHTTP(w, r)
 		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
-	}
+	})
+}
+
+type tenantIDContextKey struct{}
+
+func TenantIDFromContext(ctx context.Context) string {
+	tenantID, _ := ctx.Value(tenantIDContextKey{}).(string)
+	return tenantID
 }

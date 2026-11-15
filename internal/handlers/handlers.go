@@ -1,18 +1,25 @@
 package handlers
 
 import (
+	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/YashRaJShaRMaCODE/sourceasia-backend-assignment/internal/models"
-	"github.com/YashRaJShaRMaCODE/sourceasia-backend-assignment/internal/services"
+	"github.com/YashRaJShaRMaCODE/ratecart-api/internal/middleware"
+	"github.com/YashRaJShaRMaCODE/ratecart-api/internal/models"
+	"github.com/YashRaJShaRMaCODE/ratecart-api/internal/services"
 )
 
 var errRequestTooLarge = errors.New("request body exceeds 1 MiB limit")
+
+//go:embed openapi.json
+var openAPISpec []byte
 
 type Handler struct {
 	rateService    *services.RateLimitService
@@ -28,7 +35,25 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, "GET")
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := h.productService.Ping(ctx); err != nil {
+		jsonResponse(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+		return
+	}
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) OpenAPISpec(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, "GET")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(openAPISpec)
 }
 
 func (h *Handler) HandleRequest(w http.ResponseWriter, r *http.Request) {
@@ -36,25 +61,15 @@ func (h *Handler) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, "POST")
 		return
 	}
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
 
 	var req models.RateLimitRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeDecodeError(w, err)
-		return
-	}
-
-	req.UserID = strings.TrimSpace(req.UserID)
-	if req.UserID == "" {
-		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "user_id required"})
-		return
-	}
-	if len(req.UserID) > 128 {
-		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "user_id must be at most 128 bytes"})
-		return
-	}
-
-	if !h.rateService.ProcessRequest(req.UserID) {
-		jsonResponse(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
 		return
 	}
 
@@ -66,10 +81,25 @@ func (h *Handler) HandleStats(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, "GET")
 		return
 	}
-	jsonResponse(w, http.StatusOK, h.rateService.GetStats())
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
+	stats, err := h.rateService.GetStats(r.Context(), tenantID)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "could not read request stats"})
+		return
+	}
+	jsonResponse(w, http.StatusOK, stats)
 }
 
 func (h *Handler) HandleProducts(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
 	switch r.Method {
 	case http.MethodPost:
 		var p models.Product
@@ -77,11 +107,15 @@ func (h *Handler) HandleProducts(w http.ResponseWriter, r *http.Request) {
 			writeDecodeError(w, err)
 			return
 		}
-		created, err := h.productService.CreateProduct(&p)
+		created, err := h.productService.CreateProduct(r.Context(), tenantID, &p)
 		if err != nil {
 			status := http.StatusBadRequest
 			if strings.Contains(err.Error(), "conflict") {
 				status = http.StatusConflict
+			} else if errors.Is(err, services.ErrCatalogUnavailable) {
+				status = http.StatusInternalServerError
+				jsonResponse(w, status, map[string]string{"error": "could not save product"})
+				return
 			}
 			jsonResponse(w, status, map[string]string{"error": err.Error()})
 			return
@@ -106,7 +140,11 @@ func (h *Handler) HandleProducts(w http.ResponseWriter, r *http.Request) {
 			limit = 100
 		}
 
-		items, total := h.productService.ListProducts(limit, offset)
+		items, total, err := h.productService.ListProducts(r.Context(), tenantID, limit, offset)
+		if err != nil {
+			jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "could not list products"})
+			return
+		}
 		jsonResponse(w, http.StatusOK, models.ProductListResponse{
 			Items:  items,
 			Limit:  limit,
@@ -119,6 +157,11 @@ func (h *Handler) HandleProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleProductByID(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
 	id := strings.TrimPrefix(r.URL.Path, "/products/")
 	if id == "" {
 		h.HandleProducts(w, r)
@@ -127,7 +170,11 @@ func (h *Handler) HandleProductByID(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		p, ok := h.productService.GetByID(id)
+		p, ok, err := h.productService.GetByID(r.Context(), tenantID, id)
+		if err != nil {
+			jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "could not read product"})
+			return
+		}
 		if !ok {
 			jsonResponse(w, http.StatusNotFound, map[string]string{"error": "product not found"})
 			return
@@ -145,17 +192,46 @@ func (h *Handler) HandleProductByID(w http.ResponseWriter, r *http.Request) {
 			writeDecodeError(w, err)
 			return
 		}
-		if err := h.productService.AddMedia(id, req); err != nil {
-			status := http.StatusBadRequest
-			if err.Error() == "not found" {
+		if err := h.productService.AddMedia(r.Context(), tenantID, id, req); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, services.ErrProductNotFound) {
 				status = http.StatusNotFound
+			} else if errors.Is(err, services.ErrInvalidMedia) || strings.Contains(err.Error(), "at least one media array required") {
+				status = http.StatusBadRequest
+			} else {
+				jsonResponse(w, status, map[string]string{"error": "could not update product media"})
+				return
 			}
 			jsonResponse(w, status, map[string]string{"error": err.Error()})
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]string{"status": "media added"})
+	case http.MethodPut:
+		if strings.Contains(id, "/") {
+			jsonResponse(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			return
+		}
+		var req models.UpdateProductRequest
+		if err := decodeJSON(w, r, &req); err != nil {
+			writeDecodeError(w, err)
+			return
+		}
+		if err := h.productService.UpdateProduct(r.Context(), tenantID, id, req); err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, services.ErrProductNotFound) {
+				status = http.StatusNotFound
+			} else if strings.Contains(err.Error(), "conflict") {
+				status = http.StatusConflict
+			} else if errors.Is(err, services.ErrCatalogUnavailable) {
+				jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "could not update product"})
+				return
+			}
+			jsonResponse(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		jsonResponse(w, http.StatusOK, map[string]string{"status": "product updated"})
 	default:
-		methodNotAllowed(w, "GET, POST")
+		methodNotAllowed(w, "GET, POST, PUT")
 	}
 }
 

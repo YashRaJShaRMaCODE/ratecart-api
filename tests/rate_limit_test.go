@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/YashRaJShaRMaCODE/sourceasia-backend-assignment/internal/store"
+	"github.com/YashRaJShaRMaCODE/ratecart-api/internal/store"
 )
 
 func TestRateLimiter_Concurrency(t *testing.T) {
@@ -22,7 +22,7 @@ func TestRateLimiter_Concurrency(t *testing.T) {
 	}
 	wg.Wait()
 
-	stats := s.GetStats()[userID]
+	stats := s.GetStats(userID)
 	if stats.AcceptedCurrentWindow != 5 {
 		t.Errorf("Expected 5 accepted requests, got %d", stats.AcceptedCurrentWindow)
 	}
