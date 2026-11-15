@@ -191,6 +191,38 @@ func (s *PostgresCatalog) ListProducts(ctx context.Context, tenantID string, lim
 	return items, total, nil
 }
 
+func (s *PostgresCatalog) ListProductsDetailed(ctx context.Context, tenantID string, limit, offset int) ([]models.Product, int, error) {
+	var total int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM ratecart_products WHERE tenant_id = $1`, tenantID).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count tenant products for export: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, tenant_id, name, sku, image_urls, video_urls, created_at
+		FROM ratecart_products WHERE tenant_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`, tenantID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list tenant products for export: %w", err)
+	}
+	defer rows.Close()
+	items := make([]models.Product, 0, min(limit, total))
+	for rows.Next() {
+		var p models.Product
+		var images, videos []byte
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, &p.SKU, &images, &videos, &p.CreatedAt); err != nil {
+			return nil, 0, fmt.Errorf("scan tenant product for export: %w", err)
+		}
+		if err := json.Unmarshal(images, &p.ImageURLs); err != nil {
+			return nil, 0, fmt.Errorf("decode product images for export: %w", err)
+		}
+		if err := json.Unmarshal(videos, &p.VideoURLs); err != nil {
+			return nil, 0, fmt.Errorf("decode product videos for export: %w", err)
+		}
+		items = append(items, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("read tenant products for export: %w", err)
+	}
+	return items, total, nil
+}
+
 func (s *PostgresCatalog) AddProductMedia(ctx context.Context, tenantID, id string, images, videos []string) (bool, error) {
 	imageJSON, err := marshalURLs(images)
 	if err != nil {

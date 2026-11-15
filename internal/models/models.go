@@ -43,6 +43,13 @@ type ProductListResponse struct {
 	Total  int              `json:"total"`
 }
 
+type ProductExportResponse struct {
+	Items  []Product `json:"items"`
+	Limit  int       `json:"limit"`
+	Offset int       `json:"offset"`
+	Total  int       `json:"total"`
+}
+
 type AddMediaRequest struct {
 	ImageURLs []string `json:"image_urls"`
 	VideoURLs []string `json:"video_urls"`

@@ -74,10 +74,10 @@ func TestOpenAPISpecIsPublicCachedAndDescribesCurrentRoutes(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &spec); err != nil {
 		t.Fatalf("invalid OpenAPI JSON: %v", err)
 	}
-	if spec.OpenAPI != "3.1.0" || len(spec.Paths) != 6 {
+	if spec.OpenAPI != "3.1.0" || len(spec.Paths) != 7 {
 		t.Fatalf("unexpected OpenAPI version or paths: version=%q paths=%v", spec.OpenAPI, spec.Paths)
 	}
-	for _, path := range []string{"/health", "/request", "/stats", "/products", "/products/{id}", "/products/{id}/media"} {
+	for _, path := range []string{"/health", "/request", "/stats", "/products", "/products/export", "/products/{id}", "/products/{id}/media"} {
 		if _, ok := spec.Paths[path]; !ok {
 			t.Errorf("OpenAPI spec missing %s", path)
 		}
@@ -90,6 +90,9 @@ func TestOpenAPISpecIsPublicCachedAndDescribesCurrentRoutes(t *testing.T) {
 	}
 	if _, ok := spec.Paths["/products/{id}"]["delete"]; !ok {
 		t.Error("OpenAPI spec must describe product delete DELETE")
+	}
+	if _, ok := spec.Paths["/products/export"]["get"]; !ok {
+		t.Error("OpenAPI spec must describe tenant product export GET")
 	}
 }
 
@@ -240,6 +243,38 @@ func TestProductDeleteIsTenantScopedAndReleasesSKU(t *testing.T) {
 	}
 }
 
+func TestProductExportIsPaginatedTenantScopedAndNotCached(t *testing.T) {
+	h := testHandler()
+	created := call(h, http.MethodPost, "/products", `{"name":"Desk lamp","sku":"EXPORT-1"}`)
+	var product struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &product); err != nil || product.ID == "" {
+		t.Fatalf("created product has no ID: %v", err)
+	}
+	if got := call(h, http.MethodPost, "/products/"+product.ID+"/media", `{"image_urls":["https://example.test/lamp.png"]}`); got.Code != http.StatusOK {
+		t.Fatalf("add media status = %d: %s", got.Code, got.Body.String())
+	}
+	exported := call(h, http.MethodGet, "/products/export?limit=1&offset=0", "")
+	if exported.Code != http.StatusOK || exported.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("export = %d, cache=%q: %s", exported.Code, exported.Header().Get("Cache-Control"), exported.Body.String())
+	}
+	if !strings.Contains(exported.Body.String(), `"image_urls":["https://example.test/lamp.png"]`) || !strings.Contains(exported.Body.String(), `"total":1`) {
+		t.Fatalf("export missing full product data or total: %s", exported.Body.String())
+	}
+	if !strings.Contains(exported.Body.String(), `"video_urls":[]`) {
+		t.Fatalf("export should return empty media arrays instead of null: %s", exported.Body.String())
+	}
+	capped := call(h, http.MethodGet, "/products/export?limit=100", "")
+	if capped.Code != http.StatusOK || !strings.Contains(capped.Body.String(), `"limit":25`) {
+		t.Fatalf("export page cap = %d %s", capped.Code, capped.Body.String())
+	}
+	other := callAs(h, otherTenantKey, http.MethodGet, "/products/export", "")
+	if other.Code != http.StatusOK || !strings.Contains(other.Body.String(), `"total":0`) || strings.Contains(other.Body.String(), product.ID) {
+		t.Fatalf("export leaked another tenant's product: %d %s", other.Code, other.Body.String())
+	}
+}
+
 func TestCatalogRequestsShareTenantRateLimit(t *testing.T) {
 	h := testHandler()
 	for i := 0; i < 5; i++ {
@@ -289,6 +324,8 @@ func callAs(h *Handler, apiKey, method, path, body string) *httptest.ResponseRec
 	res := httptest.NewRecorder()
 	var handler http.HandlerFunc
 	switch {
+	case strings.HasPrefix(path, "/products/export"):
+		handler = h.HandleProductExport
 	case path == "/products":
 		handler = h.HandleProducts
 	case strings.HasPrefix(path, "/products/"):

@@ -156,6 +156,37 @@ func (h *Handler) HandleProducts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) HandleProductExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, "GET")
+		return
+	}
+	tenantID := middleware.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		jsonResponse(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+		return
+	}
+	limit, err := queryInt(r, "limit", 25)
+	if err != nil || limit <= 0 {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
+		return
+	}
+	offset, err := queryInt(r, "offset", 0)
+	if err != nil || offset < 0 {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "offset must be a non-negative integer"})
+		return
+	}
+	if limit > 25 {
+		limit = 25
+	}
+	items, total, err := h.productService.ListProductsDetailed(r.Context(), tenantID, limit, offset)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "could not export products"})
+		return
+	}
+	jsonResponse(w, http.StatusOK, models.ProductExportResponse{Items: items, Limit: limit, Offset: offset, Total: total})
+}
+
 func (h *Handler) HandleProductByID(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.TenantIDFromContext(r.Context())
 	if tenantID == "" {

@@ -66,6 +66,7 @@ func main() {
 	mux.Handle("/request", protected(h.HandleRequest, true))
 	mux.Handle("/stats", protected(h.HandleStats, false))
 	mux.Handle("/products", protected(h.HandleProducts, true))
+	mux.Handle("/products/export", protected(h.HandleProductExport, true))
 	mux.Handle("/products/", protected(h.HandleProductByID, true))
 
 	port := strings.TrimSpace(os.Getenv("PORT"))

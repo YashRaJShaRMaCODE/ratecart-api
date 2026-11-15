@@ -17,6 +17,7 @@ type Catalog interface {
 	UpdateProduct(context.Context, string, string, string, string) (bool, error)
 	GetProductByID(context.Context, string, string) (*models.Product, bool, error)
 	ListProducts(context.Context, string, int, int) ([]models.ProductSummary, int, error)
+	ListProductsDetailed(context.Context, string, int, int) ([]models.Product, int, error)
 	AddProductMedia(context.Context, string, string, []string, []string) (bool, error)
 }
 
@@ -80,6 +81,27 @@ func (s *InMemoryStore) GetProductByID(_ context.Context, tenantID, id string) (
 
 func (s *InMemoryStore) ListProducts(_ context.Context, tenantID string, limit, offset int) ([]models.ProductSummary, int, error) {
 	items, total := s.listProducts(tenantID, limit, offset)
+	return items, total, nil
+}
+
+func (s *InMemoryStore) ListProductsDetailed(_ context.Context, tenantID string, limit, offset int) ([]models.Product, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	capacity := min(max(limit, 0), len(s.productOrder))
+	items := make([]models.Product, 0, capacity)
+	total := 0
+	for _, id := range s.productOrder {
+		if p := s.products[id]; p != nil && p.TenantID == tenantID {
+			if total >= offset && len(items) < limit {
+				copy := *p
+				copy.ImageURLs = append([]string{}, p.ImageURLs...)
+				copy.VideoURLs = append([]string{}, p.VideoURLs...)
+				items = append(items, copy)
+			}
+			total++
+		}
+	}
 	return items, total, nil
 }
 

@@ -153,6 +153,10 @@ func (s *ProductService) ListProducts(ctx context.Context, tenantID string, limi
 	return s.store.ListProducts(ctx, tenantID, limit, offset)
 }
 
+func (s *ProductService) ListProductsDetailed(ctx context.Context, tenantID string, limit, offset int) ([]models.Product, int, error) {
+	return s.store.ListProductsDetailed(ctx, tenantID, limit, offset)
+}
+
 func (s *ProductService) GetByID(ctx context.Context, tenantID, id string) (*models.Product, bool, error) {
 	return s.store.GetProductByID(ctx, tenantID, id)
 }
