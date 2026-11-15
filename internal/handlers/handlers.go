@@ -230,8 +230,22 @@ func (h *Handler) HandleProductByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jsonResponse(w, http.StatusOK, map[string]string{"status": "product updated"})
+	case http.MethodDelete:
+		if strings.Contains(id, "/") {
+			jsonResponse(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			return
+		}
+		if err := h.productService.DeleteProduct(r.Context(), tenantID, id); err != nil {
+			if errors.Is(err, services.ErrProductNotFound) {
+				jsonResponse(w, http.StatusNotFound, map[string]string{"error": "product not found"})
+			} else {
+				jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "could not delete product"})
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	default:
-		methodNotAllowed(w, "GET, POST, PUT")
+		methodNotAllowed(w, "GET, POST, PUT, DELETE")
 	}
 }
 

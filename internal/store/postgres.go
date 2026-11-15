@@ -229,6 +229,18 @@ func (s *PostgresCatalog) UpdateProduct(ctx context.Context, tenantID, id, name,
 	return count == 1, nil
 }
 
+func (s *PostgresCatalog) DeleteProduct(ctx context.Context, tenantID, id string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM ratecart_products WHERE tenant_id = $1 AND id = $2`, tenantID, id)
+	if err != nil {
+		return false, fmt.Errorf("delete product: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("check product deletion: %w", err)
+	}
+	return count == 1, nil
+}
+
 func marshalURLs(urls []string) ([]byte, error) {
 	if urls == nil {
 		urls = []string{}

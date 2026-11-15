@@ -82,4 +82,13 @@ func TestPostgresCatalogPersistsTenantProducts(t *testing.T) {
 	if err != nil || total != 1 || len(items) != 1 || items[0].ThumbnailURL != product.ImageURLs[0] {
 		t.Fatalf("list = (%#v, %d, %v)", items, total, err)
 	}
+	if deleted, err := catalog.DeleteProduct(ctx, "other-tenant", product.ID); err != nil || deleted {
+		t.Fatalf("cross-tenant delete = (%v, %v), want (false, nil)", deleted, err)
+	}
+	if deleted, err := catalog.DeleteProduct(ctx, tenantID, product.ID); err != nil || !deleted {
+		t.Fatalf("owner delete = (%v, %v), want (true, nil)", deleted, err)
+	}
+	if err := catalog.CreateProduct(ctx, &models.Product{ID: uuid.NewString(), TenantID: tenantID, SKU: "TEST-2"}); err != nil {
+		t.Fatalf("recreate product with deleted SKU: %v", err)
+	}
 }

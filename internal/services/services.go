@@ -103,6 +103,17 @@ func (s *ProductService) UpdateProduct(ctx context.Context, tenantID, id string,
 	return nil
 }
 
+func (s *ProductService) DeleteProduct(ctx context.Context, tenantID, id string) error {
+	deleted, err := s.store.DeleteProduct(ctx, tenantID, id)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrCatalogUnavailable, err)
+	}
+	if !deleted {
+		return ErrProductNotFound
+	}
+	return nil
+}
+
 func validateMedia(imgs, vids []string) error {
 	if len(imgs) > 20 || len(vids) > 20 {
 		return errors.New("max 20 URLs per array")

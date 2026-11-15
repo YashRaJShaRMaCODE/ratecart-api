@@ -13,6 +13,7 @@ var ErrDuplicateSKU = errors.New("SKU already exists for tenant")
 type Catalog interface {
 	Ping(context.Context) error
 	CreateProduct(context.Context, *models.Product) error
+	DeleteProduct(context.Context, string, string) (bool, error)
 	UpdateProduct(context.Context, string, string, string, string) (bool, error)
 	GetProductByID(context.Context, string, string) (*models.Product, bool, error)
 	ListProducts(context.Context, string, int, int) ([]models.ProductSummary, int, error)
@@ -31,6 +32,26 @@ func (s *InMemoryStore) CreateProduct(_ context.Context, p *models.Product) erro
 		return ErrDuplicateSKU
 	}
 	return nil
+}
+
+func (s *InMemoryStore) DeleteProduct(_ context.Context, tenantID, id string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, ok := s.products[id]
+	if !ok || p.TenantID != tenantID {
+		return false, nil
+	}
+	delete(s.products, id)
+	delete(s.skuMap, tenantID+":"+p.SKU)
+	for i, productID := range s.productOrder {
+		if productID == id {
+			copy(s.productOrder[i:], s.productOrder[i+1:])
+			s.productOrder = s.productOrder[:len(s.productOrder)-1]
+			break
+		}
+	}
+	return true, nil
 }
 
 func (s *InMemoryStore) UpdateProduct(_ context.Context, tenantID, id, name, sku string) (bool, error) {

@@ -28,6 +28,7 @@ The public [OpenAPI 3.1 contract](/openapi.json) describes request/response sche
 | `GET` | `/stats` | Read only this tenant's accepted and rejected counts; raw user IDs are not accepted or returned. This read-only route is not counted against the quota. |
 | `POST` | `/products` | Create a product. SKU uniqueness is per tenant. |
 | `PUT` | `/products/{id}` | Replace a product's name and SKU; SKU uniqueness and tenant ownership are enforced. |
+| `DELETE` | `/products/{id}` | Permanently delete a product owned by this tenant; other tenants receive `404`. |
 | `GET` | `/products?limit=20&offset=0` | List only this tenant's product summaries. Page size caps at 100. |
 | `GET` | `/products/{id}` | Read one of this tenant's products; another tenant's ID returns `404`. |
 | `POST` | `/products/{id}/media` | Append image and video URLs to this tenant's product. At most 20 URLs per type. |

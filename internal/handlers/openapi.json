@@ -95,6 +95,16 @@
           "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/ServerError" }
         }
+      },
+      "delete": {
+        "summary": "Permanently delete a product owned by this tenant",
+        "responses": {
+          "204": { "description": "Product deleted." },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/ServerError" }
+        }
       }
     },
     "/products/{id}/media": {

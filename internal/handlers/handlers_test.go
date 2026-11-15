@@ -88,6 +88,9 @@ func TestOpenAPISpecIsPublicCachedAndDescribesCurrentRoutes(t *testing.T) {
 	if _, ok := spec.Paths["/products/{id}"]["put"]; !ok {
 		t.Error("OpenAPI spec must describe product update PUT")
 	}
+	if _, ok := spec.Paths["/products/{id}"]["delete"]; !ok {
+		t.Error("OpenAPI spec must describe product delete DELETE")
+	}
 }
 
 func TestProductsRejectsUnsupportedMethod(t *testing.T) {
@@ -208,6 +211,32 @@ func TestProductUpdateIsTenantScopedAndRejectsDuplicateSKU(t *testing.T) {
 	}
 	if hidden := callAs(h, otherTenantKey, http.MethodPut, "/products/"+product.ID, `{"name":"Other","sku":"OTHER-1"}`); hidden.Code != http.StatusNotFound {
 		t.Fatalf("cross-tenant update status = %d, want %d: %s", hidden.Code, http.StatusNotFound, hidden.Body.String())
+	}
+}
+
+func TestProductDeleteIsTenantScopedAndReleasesSKU(t *testing.T) {
+	h := testHandler()
+	created := call(h, http.MethodPost, "/products", `{"name":"Desk lamp","sku":"LAMP-DELETE"}`)
+	var product struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &product); err != nil || product.ID == "" {
+		t.Fatalf("created product has no ID: %v", err)
+	}
+	if got := callAs(h, otherTenantKey, http.MethodDelete, "/products/"+product.ID, ""); got.Code != http.StatusNotFound {
+		t.Fatalf("cross-tenant delete status = %d, want 404", got.Code)
+	}
+	if got := call(h, http.MethodGet, "/products/"+product.ID, ""); got.Code != http.StatusOK {
+		t.Fatalf("cross-tenant delete affected owner product: %d", got.Code)
+	}
+	if got := call(h, http.MethodDelete, "/products/"+product.ID, ""); got.Code != http.StatusNoContent || got.Body.Len() != 0 {
+		t.Fatalf("owner delete = %d %q, want empty 204", got.Code, got.Body.String())
+	}
+	if got := call(h, http.MethodGet, "/products/"+product.ID, ""); got.Code != http.StatusNotFound {
+		t.Fatalf("deleted product lookup status = %d, want 404", got.Code)
+	}
+	if got := call(h, http.MethodPost, "/products", `{"name":"Replacement lamp","sku":"LAMP-DELETE"}`); got.Code != http.StatusCreated {
+		t.Fatalf("reusing deleted SKU status = %d: %s", got.Code, got.Body.String())
 	}
 }
 
