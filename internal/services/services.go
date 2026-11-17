@@ -124,8 +124,8 @@ func validateMedia(imgs, vids []string) error {
 				return errors.New("URL max length 2048 chars")
 			}
 			parsed, err := url.Parse(u)
-			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-				return fmt.Errorf("invalid URL: %s", u)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
+				return errors.New("URL must be absolute HTTP(S) without embedded credentials")
 			}
 		}
 	}

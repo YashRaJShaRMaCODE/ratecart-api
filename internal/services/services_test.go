@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -68,9 +69,16 @@ func TestConcurrentCreateAllowsOnlyOneSKU(t *testing.T) {
 }
 
 func TestValidateMediaRequiresAbsoluteHTTPURL(t *testing.T) {
-	for _, url := range []string{"//example.com/image.png", "file:///tmp/image.png", "https:///missing-host"} {
-		if err := validateMedia([]string{url}, nil); err == nil {
-			t.Errorf("validateMedia(%q) succeeded, want error", url)
+	for _, mediaURL := range []string{
+		"//example.com/image.png",
+		"file:///tmp/image.png",
+		"https:///missing-host",
+		"https://user:secret@example.com/image.png",
+	} {
+		if err := validateMedia([]string{mediaURL}, nil); err == nil {
+			t.Errorf("validateMedia(%q) succeeded, want error", mediaURL)
+		} else if strings.Contains(err.Error(), "secret") {
+			t.Errorf("validation error leaked embedded URL credentials: %v", err)
 		}
 	}
 }
